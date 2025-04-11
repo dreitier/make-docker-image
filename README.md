@@ -5,9 +5,6 @@ Builds and pushes Docker image with help of a simple `Makefile`. For fast, local
 
 Link `Makefile` in your Docker image repository:
 ```bash
-# copy setup.sh from this repository to your repository, containing the Dockerfile
-cp setup/setup.sh your-docker-image-repo
-
 # switch over to your repository
 cd your-docker-image-repo
 
@@ -31,13 +28,18 @@ IMAGE_NAME := your-image-name
 ```
 
 # When cloning your Docker image repository
-Execute `./setup.sh` to download the `make-docker-image` submodule.
+Execute `make-docker-image/setup/setup.sh` to download the `make-docker-image` submodule.
 
 # Usage
 
 ```bash
 # git-tag your Docker image
 make tag ${TAG}
+
+# list your git refs (short hash, referenced tag pointing to checked out commit)
+make list-git-refs
+# outputs:
+# 2ae08fb 1.0.0
 
 # build your Docker image locally
 make build

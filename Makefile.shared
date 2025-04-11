@@ -1,10 +1,13 @@
 CONFIG = default.config
+# if this file is not present, it is simply ignored
 include $(CONFIG)
 
 AWS_REGION := "eu-central-1a"
 # find the latest tag for the current commit, even if there are multiple tags for this commit; it is ordered by date
-IMAGE_TAG := $(shell git for-each-ref --sort=-creatordate --format '%(refname:lstrip=2)' refs/tags --points-at=HEAD --count=1)
-IMAGE_FULL_PATH := $(REPOSITORY)/$(IMAGE_NAME):$(IMAGE_TAG)
+GIT_COMMIT := $(shell git rev-parse --short HEAD)
+GIT_TAG := $(shell git for-each-ref --sort=-creatordate --format '%(refname:lstrip=2)' refs/tags --points-at=HEAD --count=1)
+IMAGE_TAGS := $(strip "$(GIT_COMMIT) $(GIT_TAG)")
+IMAGE_PATH_PREFIX := $(REPOSITORY)/$(IMAGE_NAME)
 .DEFAULT_GOAL := build
 CMD_NOT_FOUND = $(error $(1) is required for this rule)
 CHECK_CMD = $(if $(shell command -v $(1)),,$(call CMD_NOT_FOUND,$(1)))
@@ -13,12 +16,25 @@ STRIPPED_ARGS := $(strip $(ARGS))
 ROOT_DIR := $(shell pwd)
 
 check:
-	@if [ "${IMAGE_TAG}" = "" ]; then\
-		echo "Missing tag for this commit. Do a tag commit instead.";\
-		exit 0;\
-	fi
+ifeq ($(IMAGE_TAGS),)
+	echo "[warn] Missing tag for this commit. Doing a tag commit for $(GIT_TAG) instead."
+endif
 
-	$(call CHECK_CMD,aws)
+ifeq ($(REPOSITORY),)
+	echo "Missing REPOSITORY parameter"
+	exit 1
+endif
+
+ifeq ($(IMAGE_NAME),)
+	echo "Missing IMAGE_NAME parameter"
+	exit 1
+endif
+
+
+$(call CHECK_CMD,aws)
+
+list-git-refs:
+	@echo $(IMAGE_TAGS)
 
 # make a git tag for this directories repository
 tag: check
@@ -29,27 +45,41 @@ tag: check
 
 # build docker image
 build: check
-	docker build -t $(IMAGE_FULL_PATH) .
+	docker build -t $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) .
 
 # push to remote AWS location
-push-aws: build
+push-ecr: build
+ifeq ($(REGISTRY_AWS_ECR),)
+	echo "Missing REGISTRY_AWS_ECR parameter"
+	exit 1
+endif
+
 	$(shell aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(REGISTRY)) 
-	docker tag $(IMAGE_FULL_PATH) $(REGISTRY_AWS_ECR)/$(IMAGE_FULL_PATH)
-	docker push $(REGISTRY_AWS_ECR)/$(IMAGE_FULL_PATH)
-	
-	@echo "[success] Pushed $(IMAGE_FULL_PATH) to remote AWS ECR container registry"
+	@for tag in "$(IMAGE_TAGS)" ; do \
+		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		docker push $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag to remote AWS ECR container registry" ; \
+	done
 
 # push to local registry
 push-local: build
-	docker tag $(IMAGE_FULL_PATH) $(REGISTRY_LOCAL)/$(IMAGE_FULL_PATH)
-	docker push $(REGISTRY_LOCAL)/$(IMAGE_FULL_PATH)
-	
-	@echo "[success] Pushed $(IMAGE_FULL_PATH) to local container registry"
+ifeq ($(REGISTRY_LOCAL),)
+	echo "Missing REGISTRY_LOCAL parameter"
+	exit 1
+endif
+
+	@for tag in "$(IMAGE_TAGS)" ; do \
+		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		docker push $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag to local container registry" ; \
+	done
 
 push: push-local
 
 clean:
-	docker rmi $(IMAGE_FULL_PATH) 
+	@for tag in "$(IMAGE_TAGS)" ; do \
+		docker rmi $(IMAGE_PATH_PREFIX):$$tag
+	done
 
 # build the container and runs the image
 run: build
@@ -60,7 +90,7 @@ run: build
 		-it \
 		-v $(ROOT_DIR)/input:/input:Z \
 		-v $(ROOT_DIR)/output:/output:Z \
-		$(DOCKER_ARGS) $(IMAGE_FULL_PATH)
+		$(DOCKER_ARGS) $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)
 
 # run interactive command line to inspect container
 interactive:
