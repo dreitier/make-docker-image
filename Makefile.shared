@@ -2,11 +2,15 @@ CONFIG = default.config
 # if this file is not present, it is simply ignored
 include $(CONFIG)
 
-AWS_REGION := "eu-central-1a"
+# use default shell
+SHELL := /bin/bash
+
+AWS_REGION := "eu-central-1"
 # find the latest tag for the current commit, even if there are multiple tags for this commit; it is ordered by date
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 GIT_TAG := $(shell git for-each-ref --sort=-creatordate --format '%(refname:lstrip=2)' refs/tags --points-at=HEAD --count=1)
-IMAGE_TAGS := $(strip "$(GIT_COMMIT) $(GIT_TAG)")
+# combine both tag and commit and remove whitespaces
+IMAGE_TAGS := $(shell echo "$(GIT_COMMIT) $(GIT_TAG)" | xargs)
 IMAGE_PATH_PREFIX := $(REPOSITORY)/$(IMAGE_NAME)
 .DEFAULT_GOAL := build
 CMD_NOT_FOUND = $(error $(1) is required for this rule)
@@ -34,14 +38,24 @@ endif
 $(call CHECK_CMD,aws)
 
 list-git-refs:
-	@echo $(IMAGE_TAGS)
+	@echo "$(IMAGE_TAGS)"
 
-# make a git tag for this directories repository
-tag: check
-	$(if $(STRIPPED_ARGS),,$(error tag must provided as first argument be set))
+# make a Git tag for this directory's repository
+git-tag: check
+	$(if $(STRIPPED_ARGS),,$(error Git tag must provided as first argument be set))
 	
-	git tag -a -m "$(STRIPPED_ARGS)" $(STRIPPED_ARGS)
+	git tag -s -a -m "$(STRIPPED_ARGS)" $(STRIPPED_ARGS)
 	@echo "Tagged this commit with $(STRIPPED_ARGS)"
+
+# create a new Git tag and push it to the origin
+git-release: git-tag
+	git push origin $(STRIPPED_ARGS)
+	git push
+
+# revoke an already released tag
+git-revoke:
+	git tag -d $(STRIPPED_ARGS)
+	git push -d origin $(STRIPPED_ARGS)
 
 # build docker image
 build: check
@@ -54,12 +68,26 @@ ifeq ($(REGISTRY_AWS_ECR),)
 	exit 1
 endif
 
-	$(shell aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(REGISTRY)) 
-	@for tag in "$(IMAGE_TAGS)" ; do \
+	set -e ; \
+	echo "Authenticating against $(REGISTRY_AWS_ECR)..." ; \
+	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(REGISTRY_AWS_ECR) ; \
+	if [[ $$? -ne 0 ]]; then \
+		echo "Unable to login to AWS ECR" ; \
+		exit 1 ; \
+	fi ; \
+	for tag in $(IMAGE_TAGS); do \
 		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		if [[ $$? -ne 0 ]] then \
+			echo "Unable to tag image" ; \
+			exit 1 ; \
+		fi ; \
 		docker push $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		if [[ $$? -ne 0 ]] then \
+			echo "Unable to push image" ; \
+			exit 1 ; \
+		fi ; \
 		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag to remote AWS ECR container registry" ; \
-	done
+	done \
 
 # push to local registry
 push-local: build
@@ -68,22 +96,33 @@ ifeq ($(REGISTRY_LOCAL),)
 	exit 1
 endif
 
-	@for tag in "$(IMAGE_TAGS)" ; do \
+	set -e ; \
+	for tag in $(IMAGE_TAGS); do \
 		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		if [[ $$? -ne 0 ]] then \
+			echo "Unable to tag image" ; \
+			exit 1 ; \
+		fi ; \
 		docker push $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		if [[ $$? -ne 0 ]] then \
+			echo "Unable to push image" ; \
+			exit 1 ; \
+		fi ; \
 		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag to local container registry" ; \
-	done
+	done \
 
 push: push-local
 
 clean:
+
 	@for tag in "$(IMAGE_TAGS)" ; do \
 		docker rmi $(IMAGE_PATH_PREFIX):$$tag
 	done
 
 # build the container and runs the image
 run: build
-	mkdir -p input
+
+	mkdir -p input  ; \
 	mkdir -p output
 
 	docker run \

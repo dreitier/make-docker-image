@@ -25,7 +25,7 @@ fi
 
 if [ -e $PWD/$MAKE_DOCKER_IMAGE_DIRECTORY/$MAKEFILE_SHARED ]; then
 	echo "[info] Updating make-docker-image ... "
-	git submodule update
+	git submodule update --remote
 fi
 
 if [ ! -e $PWD/Makefile ]; then

@@ -33,8 +33,14 @@ Execute `make-docker-image/setup/setup.sh` to download the `make-docker-image` s
 # Usage
 
 ```bash
-# git-tag your Docker image
-make tag ${TAG}
+# git-tag this repository with the given tag
+make git-tag ${TAG}
+
+# git-tag this repository, push tag and current branch to origin
+make git-release ${TAG}
+
+# deleted local git tag and remote git tag
+make git-revoke ${TAG}
 
 # list your git refs (short hash, referenced tag pointing to checked out commit)
 make list-git-refs
