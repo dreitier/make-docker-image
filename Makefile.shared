@@ -34,7 +34,6 @@ ifeq ($(IMAGE_NAME),)
 	exit 1
 endif
 
-
 $(call CHECK_CMD,aws)
 
 list-git-refs:
@@ -134,6 +133,13 @@ run: build
 # run interactive command line to inspect container
 interactive:
 	$(MAKE) DOCKER_ARGS+="$(DOCKER_ARGS) --entrypoint /bin/bash" run
+
+external-run: build run-prepare
+        REPOSITORY=$(REPOSITORY) \
+        REGISTRY=$(REGISTRY_LOCAL) \
+        IMAGE_NAME=$(IMAGE_PATH_PREFIX) \
+        IMAGE_TAG=$(GIT_COMMIT) \
+        ./run.sh $(ARGS) \
 
 %::
 	@true
