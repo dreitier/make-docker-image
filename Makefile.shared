@@ -18,8 +18,16 @@ CHECK_CMD = $(if $(shell command -v $(1)),,$(call CMD_NOT_FOUND,$(1)))
 ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 STRIPPED_ARGS := $(strip $(ARGS))
 ROOT_DIR := $(shell pwd)
+FLAVOR_SUFFIX := $(if $(FLAVOR),-$(FLAVOR),)
+DOCKERFILE := $(if $(FLAVOR),Dockerfile.$(FLAVOR),Dockerfile)
 
 check:
+
+ifeq (,$(wildcard $(DOCKERFILE)))
+	echo "Dockerfile $(DOCKERFILE) does not exist"
+	exit 1
+endif
+
 ifeq ($(IMAGE_TAGS),)
 	echo "[warn] Missing tag for this commit. Doing a tag commit for $(GIT_TAG) instead."
 endif
@@ -58,7 +66,7 @@ git-revoke:
 
 # build docker image
 build: check
-	docker build -t $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) .
+	docker build -t $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX) -f $(DOCKERFILE) .
 
 # push to remote AWS location
 push-ecr: build
@@ -75,17 +83,17 @@ endif
 		exit 1 ; \
 	fi ; \
 	for tag in $(IMAGE_TAGS); do \
-		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX) $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag$(FLAVOR_SUFFIX) ; \
 		if [[ $$? -ne 0 ]] then \
 			echo "Unable to tag image" ; \
 			exit 1 ; \
 		fi ; \
-		docker push $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		docker push $(REGISTRY_AWS_ECR)/$(IMAGE_PATH_PREFIX):$$tag$(FLAVOR_SUFFIX) ; \
 		if [[ $$? -ne 0 ]] then \
 			echo "Unable to push image" ; \
 			exit 1 ; \
 		fi ; \
-		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag to remote AWS ECR container registry" ; \
+		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag$(FLAVOR_SUFFIX) to remote AWS ECR container registry" ; \
 	done \
 
 # push to local registry
@@ -97,17 +105,17 @@ endif
 
 	set -e ; \
 	for tag in $(IMAGE_TAGS); do \
-		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT) $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		docker tag $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX) $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag$(FLAVOR_SUFFIX) ; \
 		if [[ $$? -ne 0 ]] then \
 			echo "Unable to tag image" ; \
 			exit 1 ; \
 		fi ; \
-		docker push $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag ; \
+		docker push $(REGISTRY_LOCAL)/$(IMAGE_PATH_PREFIX):$$tag$(FLAVOR_SUFFIX) ; \
 		if [[ $$? -ne 0 ]] then \
 			echo "Unable to push image" ; \
 			exit 1 ; \
 		fi ; \
-		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag to local container registry" ; \
+		echo "[success] Pushed $(IMAGE_PATH_PREFIX):$$tag$(FLAVOR_SUFFIX) to local container registry" ; \
 	done \
 
 push: push-local
@@ -115,7 +123,7 @@ push: push-local
 clean:
 
 	@for tag in "$(IMAGE_TAGS)" ; do \
-		docker rmi $(IMAGE_PATH_PREFIX):$$tag
+		docker rmi $(IMAGE_PATH_PREFIX):$$tag$(FLAVOR_SUFFIX)
 	done
 
 # build the container and runs the image
@@ -128,18 +136,15 @@ run: build
 		-it \
 		-v $(ROOT_DIR)/input:/input:Z \
 		-v $(ROOT_DIR)/output:/output:Z \
-		$(DOCKER_ARGS) $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)
+		$(DOCKER_ARGS) $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX)
 
 # run interactive command line to inspect container
 interactive:
 	$(MAKE) DOCKER_ARGS+="$(DOCKER_ARGS) --entrypoint /bin/bash" run
 
-external-run: build run-prepare
-        REPOSITORY=$(REPOSITORY) \
-        REGISTRY=$(REGISTRY_LOCAL) \
-        IMAGE_NAME=$(IMAGE_PATH_PREFIX) \
-        IMAGE_TAG=$(GIT_COMMIT) \
-        ./run.sh $(ARGS) \
+# pass on all variables from Makefile to env
+external-run: build push-local .EXPORT_ALL_VARIABLES
+	IMAGE_TAG=$(GIT_COMMIT)$(FLAVOR_SUFFIX) $(OPTS) ./run.sh $(ARGS) ;
 
 %::
 	@true
