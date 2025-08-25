@@ -64,12 +64,8 @@ git-revoke:
 	git tag -d $(STRIPPED_ARGS)
 	git push -d origin $(STRIPPED_ARGS)
 
-# build docker image
-build: check
-	docker build $(BUILD_ARGS) -t $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX) -f $(DOCKERFILE) .
-
-# push to remote AWS location
-push-ecr: build
+# authenticate against registry
+ecr-auth:
 ifeq ($(REGISTRY_AWS_ECR),)
 	echo "Missing REGISTRY_AWS_ECR parameter"
 	exit 1
@@ -78,6 +74,15 @@ endif
 	set -e ; \
 	echo "Authenticating against $(REGISTRY_AWS_ECR)..." ; \
 	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(REGISTRY_AWS_ECR) ; \
+
+# build docker image
+build: check
+	docker build $(BUILD_ARGS) -t $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX) -f $(DOCKERFILE) .
+
+# push to remote AWS location; authenticate before build because we may pull private images from registry
+push-ecr: ecr-auth build
+
+	set -e ; \
 	if [[ $$? -ne 0 ]]; then \
 		echo "Unable to login to AWS ECR" ; \
 		exit 1 ; \
