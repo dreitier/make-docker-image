@@ -66,7 +66,7 @@ git-revoke:
 
 # build docker image
 build: check
-	docker build -t $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX) -f $(DOCKERFILE) .
+	docker build $(BUILD_ARGS) -t $(IMAGE_PATH_PREFIX):$(GIT_COMMIT)$(FLAVOR_SUFFIX) -f $(DOCKERFILE) .
 
 # push to remote AWS location
 push-ecr: build
