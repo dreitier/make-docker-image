@@ -18,8 +18,8 @@ CHECK_CMD = $(if $(shell command -v $(1)),,$(call CMD_NOT_FOUND,$(1)))
 ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 STRIPPED_ARGS := $(strip $(ARGS))
 ROOT_DIR := $(shell pwd)
-FLAVOR_SUFFIX := $(if $(FLAVOR),-$(FLAVOR),)
-DOCKERFILE := $(if $(FLAVOR),Dockerfile.$(FLAVOR),Dockerfile)
+FLAVOR_SUFFIX := $(if $(FLAVOR),+$(FLAVOR),)
+DOCKERFILE := $(if $(FLAVOR),src/flavor/$(FLAVOR)/Dockerfile,src/Dockerfile)
 
 check:
 
@@ -74,6 +74,34 @@ endif
 	set -e ; \
 	echo "Authenticating against $(REGISTRY_AWS_ECR)..." ; \
 	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(REGISTRY_AWS_ECR) ; \
+
+# detect any changes of the containers
+# it will only look at changes in directory src/* and then derives if single/multiple/all/none flavor is affected
+detect-last-changed-flavors:
+
+	@set -e ; \
+	changed_files=`git log -1 --name-only --pretty=''` ; \
+	has_found_any_changed_source_file=0 ; \
+	found_flavors="" ; \
+	for file in $$changed_files ; do \
+		if [[ $$file == src* ]]; then \
+			has_found_any_changed_source_file=1 ; \
+			if [[ $$file == src/flavor/* ]]; then \
+				flavor=$$(echo $$file | cut -d"/" -f3) ; \
+				found_flavors="$$found_flavors $$flavor" ; \
+			fi ; \
+		fi ; \
+	done ; \
+	if [ "$$has_found_any_changed_source_file" = "1" ]; then \
+		# it has affected all/shared files; rebuild everything if flavors are used \
+		if [ "$$found_flavors" = "" ] && [ -d "src/flavor" ]; then \
+			found_flavors=`ls -d src/flavor/*` ; \
+		fi ; \
+		# remove whitespace from beginning/end \
+		found_flavors=$${found_flavors#[[:space:]]} ; \
+		# remove duplicates \
+		echo -e "$${found_flavors// /\\n}" | sort -u ; \
+	fi \
 
 # build docker image
 build: check
