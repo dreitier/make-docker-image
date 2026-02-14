@@ -18,7 +18,7 @@ CHECK_CMD = $(if $(shell command -v $(1)),,$(call CMD_NOT_FOUND,$(1)))
 ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 STRIPPED_ARGS := $(strip $(ARGS))
 ROOT_DIR := $(shell pwd)
-FLAVOR_SUFFIX := $(if $(FLAVOR),+$(FLAVOR),)
+FLAVOR_SUFFIX := $(if $(FLAVOR),_$(FLAVOR),)
 DOCKERFILE := $(if $(FLAVOR),src/flavor/$(FLAVOR)/Dockerfile,src/Dockerfile)
 
 check:
