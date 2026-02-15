@@ -81,6 +81,8 @@ make list-git-refs
 
 # build your Docker image locally
 make build
+# build a flavor
+FLAVOR=grails-2.5.6 make build
 
 # build your Docker image and push it to the specified AWS ECR location. Latest git tag is used.
 make push-ecr
@@ -88,6 +90,8 @@ make push-ecr
 # build your Docker image and push it to the local location. Latest git tag is used.
 make push-local 
 # or just `make push`
+# build and push a flavor
+FLAVOR=grails-2.5.6 make push-local
 
 # clean docker image
 make clean
