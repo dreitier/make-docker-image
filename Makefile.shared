@@ -80,7 +80,7 @@ endif
 detect-last-changed-flavors:
 
 	@set -e ; \
-	changed_files=`git log -1 --name-only --pretty=''` ; \
+	changed_files=`git show --diff-filter=ACMR --pretty="format:" --name-only $$(git log --pretty --format="%H" -1)` ; \
 	has_found_any_changed_source_file=0 ; \
 	found_flavors="" ; \
 	for file in $$changed_files ; do \
@@ -95,7 +95,8 @@ detect-last-changed-flavors:
 	if [ "$$has_found_any_changed_source_file" = "1" ]; then \
 		# it has affected all/shared files; rebuild everything if flavors are used \
 		if [ "$$found_flavors" = "" ] && [ -d "src/flavor" ]; then \
-			found_flavors=`ls -d src/flavor/*` ; \
+			# find only flavors which are excluded from shared changes \
+			found_flavors=`find src/flavor/ -mindepth 1 -type d '!' -exec test -e "{}/.excluded_from_shared_changes" ';' -printf '%P '` ; \
 		fi ; \
 		# remove whitespace from beginning/end \
 		found_flavors=$${found_flavors#[[:space:]]} ; \

@@ -9,6 +9,7 @@ This scripts expects that you use the following directory structure in your Git 
         flavor/             <-- directory with flavors - you do not need it if no flavors are used
             grails-2.5.6/   <-- one flavor
                 Dockerfile
+                .excluded_from_shared_changes   <-- flavor is ignored if anything changes in src/shared
             grails-6.0.0/   <-- another flavor
                 Dockerfile
             grails-7.0.7/   <-- and another flavor
@@ -60,10 +61,10 @@ grails-2.5.6
 # 2. if multiple changes are made made in src/flavor/grails-2.5.6 and grails-6.0.0 have been made:
 grails-2.5.6
 grails-6.0.0
-# 3. if any change in src/* (not flavor/ but e.g. src/entrypoint.sh) has been made, all flavors are affected:
-grails-2.5.6
+# 3. if any change in src/* (not flavor/ but e.g. src/entrypoint.sh) has been made, only non-excluded flavors are affected:
 grails-6.0.0
 grails-7.0.7
+# 4. grails-2.5.6 is ignored because marker file .excluded_from_shared_changes is present in that flavor
 
 # git-tag this repository with the given tag
 make git-tag ${TAG}
